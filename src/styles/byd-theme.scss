@@ -1,0 +1,21 @@
+// 比亚迪品牌色
+$byd-red: #e60012;
+$byd-red-dark: #c4000f;
+$byd-red-light: #ff4d5e;
+$byd-black: #1a1a1a;
+$byd-gray: #f5f5f5;
+$byd-ev-green: #00a651;
+$byd-gold: #d4a853;
+
+:root {
+  --byd-red: #{$byd-red};
+  --byd-red-dark: #{$byd-red-dark};
+  --byd-black: #{$byd-black};
+  --byd-ev-green: #{$byd-ev-green};
+  --el-color-primary: #{$byd-red};
+  --el-color-primary-light-3: #ff6b77;
+  --el-color-primary-light-5: #ff9aa3;
+  --el-color-primary-light-7: #ffc9cd;
+  --el-color-primary-light-9: #fff0f1;
+  --el-color-primary-dark-2: #{$byd-red-dark};
+}

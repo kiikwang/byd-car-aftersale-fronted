@@ -1,0 +1,83 @@
+@use './variables.scss' as *;
+@use './byd-theme.scss';
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  font-family: 'PingFang SC', 'Microsoft YaHei', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: $bg-page;
+  color: #303133;
+}
+
+.page-container {
+  padding: 16px;
+}
+
+.page-card {
+  background: $bg-card;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+}
+
+.search-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+  align-items: center;
+}
+
+.kpi-row {
+  margin-bottom: 16px;
+}
+
+.kpi-card {
+  background: linear-gradient(135deg, #e60012 0%, #c4000f 100%);
+  border-radius: 12px;
+  padding: 20px;
+  color: #fff;
+  position: relative;
+  overflow: hidden;
+
+  &::after {
+    content: '';
+    position: absolute;
+    right: -20px;
+    top: -20px;
+    width: 80px;
+    height: 80px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 50%;
+  }
+
+  &.success {
+    background: linear-gradient(135deg, #00a651 0%, #008c44 100%);
+  }
+
+  &.warning {
+    background: linear-gradient(135deg, #fa8c16 0%, #d46b08 100%);
+  }
+
+  &.danger {
+    background: linear-gradient(135deg, #ff4d4f 0%, #cf1322 100%);
+  }
+
+  .kpi-label {
+    font-size: 14px;
+    opacity: 0.85;
+    margin-bottom: 8px;
+  }
+
+  .kpi-value {
+    font-size: 28px;
+    font-weight: 600;
+  }
+}

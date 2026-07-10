@@ -1,0 +1,113 @@
+{
+  "han-ev": {
+    "page": "https://www.byd.com/en/car/han",
+    "slug": "han",
+    "candidates": [
+      "https://www.byd.com/material/byd-site/en/home/global/BYD-Global.jpg",
+      "https://www.byd.com/material/byd-site/en/home/global/Batteries.jpg",
+      "https://www.byd.com/material/byd-site/en/home/global/Commercial-Vehicles.jpg",
+      "https://www.byd.com/material/byd-site/en/home/global/Electronics.jpg",
+      "https://www.byd.com/material/byd-site/en/home/global/Forklift.jpg",
+      "https://www.byd.com/material/byd-site/en/home/global/Rail-Transit.jpg",
+      "https://www.byd.com/material/byd-site/en/product/han/ext/EXTERIOR SPEC.jpg",
+      "https://www.byd.com/material/byd-site/en/product/han/ext/HAN exterior AWD.jpg",
+      "https://www.byd.com/material/byd-site/en/product/han/ext/cuerpo-lateral-mob.jpg",
+      "https://www.byd.com/material/byd-site/en/product/han/ext/cuerpo-lateral.jpg",
+      "https://www.byd.com/material/byd-site/en/product/han/ext/diseño-frontal-mob.jpg",
+      "https://www.byd.com/material/byd-site/en/product/han/ext/diseño-frontal.jpg",
+      "https://www.byd.com/material/byd-site/en/product/han/ext/exterior-mob.jpg",
+      "https://www.byd.com/material/byd-site/en/product/han/ext/exterior.jpg",
+      "https://www.byd.com/material/byd-site/en/product/han/ext/rueda_sporte-mob.jpg",
+      "https://www.byd.com/material/byd-site/en/product/han/ext/rueda_sporte.jpg",
+      "https://www.byd.com/material/byd-site/en/product/han/int/interior han.jpg",
+      "https://www.byd.com/material/byd-site/en/product/han/int/interior-mob.jpg",
+      "https://www.byd.com/material/byd-site/en/product/han/int/interior.jpg",
+      "https://www.byd.com/material/byd-site/en/product/han/int/la-consola-contral-mob.jpg"
+    ],
+    "picked": "https://www.byd.com/material/byd-site/en/product/han/ext/EXTERIOR SPEC.jpg"
+  },
+  "seal-ev": {
+    "page": "https://www.byd.com/uk/electric-cars/seal",
+    "slug": "seal",
+    "candidates": [
+      "http://electronics.byd.com/elecen/index.html&quot;,&quot;text&quot;:&quot;Electronics&quot;},{&quot;img&quot;:&quot;/material/byd-site/uk/home/global/Batteries.jpg&quot;,&quot;newWindow&quot;:true,&quot;link&quot;:&quot;https://www.bydglobal.com/en/NewEnergy.html&quot;,&quot;text&quot;:&quot;Batteries&quot;},{&quot;img&quot;:&quot;/material/byd-site/uk/home/global/Rail-Transit.jpg",
+      "https://www.byd.com/material/byd-site/edm/green-check-icon.png"
+    ],
+    "picked": null
+  },
+  "seal07-dmi": {
+    "page": "https://www.byd.com/uk/electric-cars/seal",
+    "slug": "seal",
+    "candidates": [
+      "http://electronics.byd.com/elecen/index.html&quot;,&quot;text&quot;:&quot;Electronics&quot;},{&quot;img&quot;:&quot;/material/byd-site/uk/home/global/Batteries.jpg&quot;,&quot;newWindow&quot;:true,&quot;link&quot;:&quot;https://www.bydglobal.com/en/NewEnergy.html&quot;,&quot;text&quot;:&quot;Batteries&quot;},{&quot;img&quot;:&quot;/material/byd-site/uk/home/global/Rail-Transit.jpg",
+      "https://www.byd.com/material/byd-site/edm/green-check-icon.png"
+    ],
+    "picked": null
+  },
+  "tang-dmi": {
+    "page": "https://www.byd.com/en/car/tang",
+    "slug": "tang",
+    "candidates": [
+      "https://www.byd.com/material/byd-site/en/home/global/BYD-Global.jpg",
+      "https://www.byd.com/material/byd-site/en/home/global/Batteries.jpg",
+      "https://www.byd.com/material/byd-site/en/home/global/Commercial-Vehicles.jpg",
+      "https://www.byd.com/material/byd-site/en/home/global/Electronics.jpg",
+      "https://www.byd.com/material/byd-site/en/home/global/Forklift.jpg",
+      "https://www.byd.com/material/byd-site/en/home/global/Rail-Transit.jpg",
+      "https://www.byd.com/material/byd-site/en/product/tang/minor-part/TANG-interior (5)-mob.jpg",
+      "https://www.byd.com/material/byd-site/en/product/tang/minor-part/performance1-mob.jpg",
+      "https://www.byd.com/material/byd-site/en/product/tang/minor-part/performance1-pc.jpg",
+      "https://www.byd.com/material/byd-site/en/product/tang/minor-part/tang-interior9-mob.jpg",
+      "https://www.byd.com/material/byd-site/en/product/tang/minor-part/tang-interior9-pc.jpg",
+      "https://www.byd.com/material/byd-site/en/product/tang/minor-part/tang-minor1-mob.jpg",
+      "https://www.byd.com/material/byd-site/en/product/tang/minor-part/tang-minor2-pc.jpg",
+      "https://www.byd.com/material/byd-site/en/product/tang/minor-part/tang-minor3-mob.jpg",
+      "https://www.byd.com/material/byd-site/en/product/tang/minor-part/tang-minor3-pc.jpg",
+      "https://www.byd.com/material/byd-site/en/product/tang/minor-part/tang-minor5-pc.jpg",
+      "https://www.byd.com/material/byd-site/en/product/tang/minor-part/tang-minor6-mob.jpg",
+      "https://www.byd.com/material/byd-site/en/product/tang/minor-part/tang-minor6-pc.png",
+      "https://www.byd.com/material/byd-site/en/product/tang/minor-part/tang-minor7-mob.jpg",
+      "https://www.byd.com/material/byd-site/en/product/tang/minor-part/tang-minor7-pc.jpg"
+    ],
+    "picked": "https://www.byd.com/material/byd-site/en/product/tang/tang-exterior1-pc.jpg"
+  },
+  "dolphin": {
+    "page": "https://www.byd.com/en/car/dolphin",
+    "error": "HTTP Error 404: Not Found"
+  },
+  "yuan-plus": {
+    "page": "https://www.byd.com/en/car/atto3",
+    "slug": "atto3",
+    "candidates": [
+      "https://www.byd.com/material/byd-site/en/home/global/BYD-Global.jpg",
+      "https://www.byd.com/material/byd-site/en/home/global/Batteries.jpg",
+      "https://www.byd.com/material/byd-site/en/home/global/Commercial-Vehicles.jpg",
+      "https://www.byd.com/material/byd-site/en/home/global/Electronics.jpg",
+      "https://www.byd.com/material/byd-site/en/home/global/Forklift.jpg",
+      "https://www.byd.com/material/byd-site/en/home/global/Rail-Transit.jpg",
+      "https://www.byd.com/material/byd-site/en/product/atto3/Banner-mob.jpg",
+      "https://www.byd.com/material/byd-site/en/product/atto3/Banner1.jpg",
+      "https://www.byd.com/material/byd-site/en/product/atto3/Banner4-PC.jpg",
+      "https://www.byd.com/material/byd-site/en/product/atto3/Banner4-mob.jpg",
+      "https://www.byd.com/material/byd-site/en/product/atto3/F01-2-mob.jpg",
+      "https://www.byd.com/material/byd-site/en/product/atto3/F01-2.jpg",
+      "https://www.byd.com/material/byd-site/en/product/atto3/F01-3-mob.jpg",
+      "https://www.byd.com/material/byd-site/en/product/atto3/F01-3.jpg",
+      "https://www.byd.com/material/byd-site/en/product/atto3/F02-1-mob.jpg",
+      "https://www.byd.com/material/byd-site/en/product/atto3/F02-1.jpg",
+      "https://www.byd.com/material/byd-site/en/product/atto3/F02-Sub01-mob.jpg",
+      "https://www.byd.com/material/byd-site/en/product/atto3/F02-Sub01.jpg",
+      "https://www.byd.com/material/byd-site/en/product/atto3/F02-Sub02-mob.jpg",
+      "https://www.byd.com/material/byd-site/en/product/atto3/F02-Sub02.jpg"
+    ],
+    "picked": "https://www.byd.com/material/byd-site/en/product/atto3/F09-Sub03.png"
+  },
+  "song-plus-dmi": {
+    "page": "https://www.byd.com/en/car/sealu",
+    "error": "HTTP Error 404: Not Found"
+  },
+  "qin-plus-dmi": {
+    "page": "https://www.byd.com/en/car/qin",
+    "error": "HTTP Error 404: Not Found"
+  }
+}
