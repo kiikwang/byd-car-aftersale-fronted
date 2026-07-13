@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
 import { useUserStore } from '@/stores/user'
@@ -8,8 +8,10 @@ import { usePermissions } from '@/composables/usePermissions'
 import type { DiagnosisResult, Vehicle, BatteryHealthRecord, FaultRecord, WorkOrder } from '@/types'
 import { agentApi, batteryApi, faultApi, vehicleApi, workOrderApi } from '@/api'
 import { buildVehicleListParams } from '@/composables/useScopedVehicles'
+import { buildAgentInputFromFault, parseFaultDescription } from '@/utils/fault-form'
 
 const route = useRoute()
+const router = useRouter()
 const userStore = useUserStore()
 const { can } = usePermissions()
 const loading = ref(false)
@@ -19,6 +21,7 @@ const vehicles = ref<Vehicle[]>([])
 const batteries = ref<BatteryHealthRecord[]>([])
 const faults = ref<FaultRecord[]>([])
 const myOrders = ref<WorkOrder[]>([])
+const allOrders = ref<WorkOrder[]>([])
 
 const selectedFaultId = ref<number | null>(null)
 
@@ -34,28 +37,85 @@ const vehicle = computed(() =>
   vehicles.value.find((v) => v.vin === selectedFault.value?.vin),
 )
 
-const battery = computed(() =>
-  batteries.value.find((b) => b.vin === selectedFault.value?.vin),
-)
+const battery = computed(() => {
+  const vin = selectedFault.value?.vin
+  if (!vin) return undefined
+  return batteries.value
+    .filter((b) => b.vin === vin)
+    .sort((a, b) => String(b.detectTime || '').localeCompare(String(a.detectTime || '')))[0]
+})
 
-const orderOptions = computed(() =>
+type DiagnoseOption = {
+  key: string
+  faultId: number
+  workOrderId?: number
+  label: string
+  group: 'mine' | 'order' | 'fault'
+}
+
+const diagnoseOptions = computed<DiagnoseOption[]>(() => {
+  const options: DiagnoseOption[] = []
+  const usedFaultIds = new Set<number>()
+
+  const pushOrder = (o: WorkOrder, group: 'mine' | 'order') => {
+    if (!o.faultId || usedFaultIds.has(o.faultId)) return
+    const fault = faults.value.find((f) => f.faultId === o.faultId)
+    if (!fault) return
+    usedFaultIds.add(o.faultId)
+    const plate = vehicles.value.find((v) => v.vin === fault.vin)?.licensePlate || fault.vin
+    options.push({
+      key: `wo-${o.workOrderId}`,
+      faultId: o.faultId,
+      workOrderId: o.workOrderId,
+      group,
+      label: `${o.workOrderNo} · ${plate} · ${o.status}`,
+    })
+  }
+
   myOrders.value
-    .filter((o) => o.faultId)
-    .map((o) => {
-      const fault = faults.value.find((f) => f.faultId === o.faultId)
-      const plate = vehicles.value.find((v) => v.vin === fault?.vin)?.licensePlate || fault?.vin || o.vin
-      return {
-        faultId: o.faultId as number,
-        workOrderId: o.workOrderId,
-        label: `${o.workOrderNo} · ${plate} · ${fault?.status || '-'}`,
-      }
-    }),
-)
+    .filter((o) => !['COMPLETED', 'CANCELLED'].includes(o.status))
+    .forEach((o) => pushOrder(o, 'mine'))
+  myOrders.value
+    .filter((o) => ['COMPLETED', 'CANCELLED'].includes(o.status))
+    .forEach((o) => pushOrder(o, 'mine'))
+
+  allOrders.value.forEach((o) => {
+    if (myOrders.value.some((m) => m.workOrderId === o.workOrderId)) return
+    if (['COMPLETED', 'CANCELLED'].includes(o.status)) return
+    pushOrder(o, 'order')
+  })
+
+  faults.value
+    .filter((f) => f.faultId && ['REGISTERED', 'DIAGNOSED'].includes(f.status))
+    .forEach((f) => {
+      if (usedFaultIds.has(f.faultId!)) return
+      usedFaultIds.add(f.faultId!)
+      const plate = vehicles.value.find((v) => v.vin === f.vin)?.licensePlate || f.vin
+      options.push({
+        key: `fault-${f.faultId}`,
+        faultId: f.faultId!,
+        group: 'fault',
+        label: `${f.faultNo} · ${plate} · ${f.status}（待关联工单也可诊断）`,
+      })
+    })
+
+  return options
+})
+
+const mineOptions = computed(() => diagnoseOptions.value.filter((o) => o.group === 'mine'))
+const otherOrderOptions = computed(() => diagnoseOptions.value.filter((o) => o.group === 'order'))
+const faultOnlyOptions = computed(() => diagnoseOptions.value.filter((o) => o.group === 'fault'))
 
 function applyRouteSelection() {
   const faultId = Number(route.query.faultId)
   if (faultId && faults.value.some((f) => f.faultId === faultId)) {
     selectedFaultId.value = faultId
+    return
+  }
+  const workOrderId = Number(route.query.workOrderId)
+  if (workOrderId) {
+    const order = [...myOrders.value, ...allOrders.value].find((o) => o.workOrderId === workOrderId)
+    if (order?.faultId) selectedFaultId.value = order.faultId
   }
 }
 
@@ -65,7 +125,7 @@ watch(selectedFaultId, () => {
 
 async function startDiagnosis() {
   if (!selectedFault.value?.faultId) {
-    ElMessage.warning('请选择关联工单的故障记录')
+    ElMessage.warning('请先选择工单或故障记录')
     return
   }
   const faultDesc = buildAgentInputFromFault(selectedFault.value.faultDescription)
@@ -93,20 +153,30 @@ async function startDiagnosis() {
   }
 }
 
+function goWorkOrders() {
+  router.push('/work-order')
+}
+
+function goFaults() {
+  router.push('/fault')
+}
+
 onMounted(async () => {
-  const [vs, bs, fs, orders] = await Promise.all([
+  const [vs, bs, fs, mine, all] = await Promise.all([
     vehicleApi.list(buildVehicleListParams(userStore.role, userStore.userId)),
     batteryApi.list(),
     faultApi.list(),
-    workOrderApi.listMine(userStore.userId),
+    workOrderApi.listMine(userStore.userId).catch(() => [] as WorkOrder[]),
+    workOrderApi.list().catch(() => [] as WorkOrder[]),
   ])
   vehicles.value = vs || []
   batteries.value = bs || []
   faults.value = fs || []
-  myOrders.value = orders || []
+  myOrders.value = mine || []
+  allOrders.value = all || []
   applyRouteSelection()
-  if (!selectedFaultId.value && orderOptions.value.length) {
-    selectedFaultId.value = orderOptions.value[0].faultId
+  if (!selectedFaultId.value && diagnoseOptions.value.length) {
+    selectedFaultId.value = diagnoseOptions.value[0].faultId
   }
   if (selectedFaultId.value && route.query.auto === '1') {
     await startDiagnosis()
@@ -116,7 +186,26 @@ onMounted(async () => {
 
 <template>
   <div class="page-container">
-    <PageHeader title="智能诊断" subtitle="结合车主描述与顾问判断，辅助技师排查故障" />
+    <PageHeader title="智能诊断" subtitle="结合车主描述与顾问判断，辅助技师排查故障">
+      <template #actions>
+        <el-button @click="goWorkOrders">去工单列表</el-button>
+        <el-button @click="goFaults">去故障登记</el-button>
+      </template>
+    </PageHeader>
+
+    <el-alert
+      v-if="!diagnoseOptions.length"
+      type="warning"
+      :closable="false"
+      show-icon
+      title="暂无可诊断数据"
+      style="margin-bottom: 16px"
+    >
+      <p>
+        当前账号下没有关联故障的工单，也没有待诊断故障。请先用顾问账号登记故障并生成/派工，
+        或执行数据库种子脚本 <code>seed-production.sql</code> 导入演示工单后，用 <code>tech001</code> 登录再试。
+      </p>
+    </el-alert>
 
     <el-row :gutter="16">
       <el-col :span="10">
@@ -126,16 +215,34 @@ onMounted(async () => {
             <el-form-item label="关联工单 / 故障">
               <el-select
                 v-model="selectedFaultId"
-                placeholder="选择我的维修工单"
+                placeholder="选择工单或故障记录"
                 style="width: 100%"
                 filterable
               >
-                <el-option
-                  v-for="item in orderOptions"
-                  :key="item.faultId"
-                  :label="item.label"
-                  :value="item.faultId"
-                />
+                <el-option-group v-if="mineOptions.length" label="我的工单">
+                  <el-option
+                    v-for="item in mineOptions"
+                    :key="item.key"
+                    :label="item.label"
+                    :value="item.faultId"
+                  />
+                </el-option-group>
+                <el-option-group v-if="otherOrderOptions.length" label="其他在修工单">
+                  <el-option
+                    v-for="item in otherOrderOptions"
+                    :key="item.key"
+                    :label="item.label"
+                    :value="item.faultId"
+                  />
+                </el-option-group>
+                <el-option-group v-if="faultOnlyOptions.length" label="待诊断故障（可无工单）">
+                  <el-option
+                    v-for="item in faultOnlyOptions"
+                    :key="item.key"
+                    :label="item.label"
+                    :value="item.faultId"
+                  />
+                </el-option-group>
               </el-select>
             </el-form-item>
 
@@ -213,7 +320,7 @@ onMounted(async () => {
             </div>
           </template>
 
-          <el-empty v-else description="选择工单后查看车主/顾问描述，再开始诊断" />
+          <el-empty v-else description="选择工单或故障后查看车主/顾问描述，再开始诊断" />
         </div>
       </el-col>
     </el-row>
