@@ -43,6 +43,7 @@ const parts = ref<Part[]>([])
 const faults = ref<FaultRecord[]>([])
 const settlements = ref<Settlement[]>([])
 const pendingPartUsages = ref<PartUsageRecord[]>([])
+const todayPartUsageCount = ref(0)
 const technicians = ref<Array<{ userId: number; realName: string }>>([])
 const supervisionByOrderId = ref<Record<number, SupervisionEntry>>({})
 const ownerReminders = ref<VehicleReminder[]>([])
@@ -309,10 +310,9 @@ const kpis = computed<KpiItem[]>(() => {
 
   if (userStore.role === 'PART_ADMIN') {
     const lowStock = lowStockParts.value
-    const todayUsages = pendingPartUsages.value.filter((u) => isToday(u.createdAt))
     return [
       { label: '待审批领用', value: pendingPartUsages.value.length, type: 'warning', actionPath: '/parts', actionQuery: { tab: 'requests' } },
-      { label: '今日新申请', value: todayUsages.length, type: '', actionPath: '/parts', actionQuery: { tab: 'requests', today: '1' } },
+      { label: '今日新申请', value: todayPartUsageCount.value, type: '', actionPath: '/parts', actionQuery: { tab: 'requests', today: '1' } },
       { label: '库存预警', value: lowStock.length, type: 'danger', actionPath: '/parts', actionQuery: { tab: 'inventory', lowStock: '1' } },
       { label: '备件种类', value: parts.value.length, type: '', actionPath: '/parts', actionQuery: { tab: 'inventory' } },
     ]
@@ -423,7 +423,7 @@ async function approvePartUsage(row: PartUsageRecord, approved: boolean) {
 }
 
 onMounted(async () => {
-  const [s, ws, aps, bs, ps, fs, sts, usages, alerts] = await Promise.all([
+  const [s, ws, aps, bs, ps, fs, sts, usages, todayStats, alerts] = await Promise.all([
     dashboardApi.stats(),
     workOrderApi.list(),
     appointmentApi.list(),
@@ -432,6 +432,7 @@ onMounted(async () => {
     faultApi.list(),
     settlementApi.list(),
     partUsageApi.listPending(),
+    partUsageApi.countToday().catch(() => ({ todayApplications: 0 })),
     partsApi.lowStockAlerts(),
   ])
   lowStockAlerts.value = alerts || []
@@ -443,6 +444,7 @@ onMounted(async () => {
   faults.value = fs || []
   settlements.value = sts || []
   pendingPartUsages.value = usages || []
+  todayPartUsageCount.value = todayStats?.todayApplications ?? 0
   if (userStore.role === 'TECHNICIAN') {
     const logs = await workOrderApi.listSupervisions(userStore.userId)
     supervisionByOrderId.value = buildSupervisionMap(logs || [])

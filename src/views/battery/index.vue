@@ -10,6 +10,7 @@ import { useUserStore } from '@/stores/user'
 import { useOwnerVins, buildVehicleListParams } from '@/composables/useScopedVehicles'
 import { usePermissions } from '@/composables/usePermissions'
 import { batteryApi, vehicleApi, vehicleHealthApi } from '@/api'
+import { formatDateTime, formatLicensePlate } from '@/utils/format-datetime'
 import type { BatteryHealthRecord, Vehicle, VehicleHealthItem, VehicleHealthSnapshot } from '@/types'
 
 const userStore = useUserStore()
@@ -33,26 +34,50 @@ const form = ref({
   detectTime: '',
 })
 
+/** 电池检测记录接口未按角色过滤，这里按当前可见车辆范围二次过滤：
+ * 顾问只应看到自己负责客户的车辆，其他角色（技师/管理员等）能看到全部车辆，
+ * 同时也能把"检测记录对应不到任何车辆档案"的脏数据过滤掉，避免车牌显示成一串 VIN。 */
+const vehicleVinSet = computed(() => new Set(vehicles.value.map((v) => v.vin)))
 const scopedAlerts = computed(() =>
   userStore.isOwner
     ? allAlerts.value.filter((b) => ownerVins.value.includes(b.vin))
-    : allAlerts.value,
+    : allAlerts.value.filter((b) => vehicleVinSet.value.has(b.vin)),
 )
 
 const filterLevel = ref('')
 
-/** 每辆车只保留最新一条检测记录（左侧列表） */
+type BatteryTableRow = BatteryHealthRecord & { noRecord?: boolean }
+
+/** 每辆车只保留最新一条检测记录（左侧列表）；无任何检测记录的车辆也保留占位行，避免被误当成其他车辆的数据 */
 const latestAlerts = computed(() => {
-  const byVin = new Map<string, BatteryHealthRecord>()
+  const byVin = new Map<string, BatteryTableRow>()
   for (const record of scopedAlerts.value) {
     const prev = byVin.get(record.vin)
     if (!prev || String(record.detectTime || '') > String(prev.detectTime || '')) {
       byVin.set(record.vin, record)
     }
   }
-  return Array.from(byVin.values()).sort((a, b) =>
-    String(b.detectTime || '').localeCompare(String(a.detectTime || '')),
-  )
+  if (!userStore.isOwner) {
+    for (const v of vehicles.value) {
+      if (!byVin.has(v.vin)) {
+        byVin.set(v.vin, {
+          vin: v.vin,
+          soh: NaN,
+          chargeCycles: NaN,
+          maxTemperature: NaN,
+          voltageDiff: NaN,
+          warningLevel: 'NONE' as BatteryHealthRecord['warningLevel'],
+          detectTime: '',
+          noRecord: true,
+        })
+      }
+    }
+  }
+  return Array.from(byVin.values()).sort((a, b) => {
+    if (a.noRecord && !b.noRecord) return 1
+    if (!a.noRecord && b.noRecord) return -1
+    return String(b.detectTime || '').localeCompare(String(a.detectTime || ''))
+  })
 })
 
 const tableData = computed(() => {
@@ -93,12 +118,20 @@ type VehicleHealthSummary = {
 const ownerHealthSummaries = computed(() =>
   healthSnapshots.value.map((snapshot) => buildVehicleHealthSummary(snapshot)),
 )
-const selectedHealthSummary = computed(() =>
-  ownerHealthSummaries.value.find((summary) => summary.vehicle.vin === selectedVin.value)
-    || ownerHealthSummaries.value[0],
-)
+/** 仅在尚未选中任何车辆时才回退到第一条，避免误把无检测记录车辆的面板显示成别的车辆数据 */
+const selectedHealthSummary = computed(() => {
+  if (!selectedVin.value) return ownerHealthSummaries.value[0]
+  return ownerHealthSummaries.value.find((summary) => summary.vehicle.vin === selectedVin.value)
+})
+
+const selectedVehicleWithoutRecord = computed(() => {
+  if (!selectedVin.value || selectedHealthSummary.value) return undefined
+  return vehicles.value.find((v) => v.vin === selectedVin.value)
+})
 const selectedBatteryRecord = computed(() =>
-  latestAlerts.value.find((record) => record.vin === selectedHealthSummary.value?.vehicle.vin),
+  latestAlerts.value.find(
+    (record) => record.vin === selectedHealthSummary.value?.vehicle.vin && !record.noRecord,
+  ),
 )
 
 const moduleIconMap: Record<string, Component> = {
@@ -166,7 +199,19 @@ function toHealthModule(item: VehicleHealthItem): HealthModule {
 
 function vehicleLabel(vin: string) {
   const vehicle = vehicles.value.find((v) => v.vin === vin)
-  return vehicle ? `${vehicle.licensePlate || vin} · ${vehicle.model}` : vin
+  if (!vehicle) return vin
+  const plate = formatLicensePlate(vehicle.licensePlate || '') || vin
+  return `${plate} · ${vehicle.model}`
+}
+
+function resolveWarningLevel(
+  soh: number,
+  maxTemperature: number,
+  voltageDiff: number,
+): BatteryHealthRecord['warningLevel'] {
+  if (soh < 70 || maxTemperature > 60 || voltageDiff > 0.2) return 'DANGER'
+  if (soh < 80 || maxTemperature > 50 || voltageDiff > 0.1) return 'WARNING'
+  return 'NORMAL'
 }
 
 function selectVehicle(vin: string) {
@@ -200,12 +245,6 @@ function openCreate() {
   dialogVisible.value = true
 }
 
-function resolveWarningLevel(soh: number): BatteryHealthRecord['warningLevel'] {
-  if (soh < 70) return 'DANGER'
-  if (soh < 80) return 'WARNING'
-  return 'NORMAL'
-}
-
 async function submitCreate() {
   if (!form.value.vin || !form.value.detectTime) {
     ElMessage.warning('请选择车辆并填写检测时间')
@@ -213,7 +252,8 @@ async function submitCreate() {
   }
   await batteryApi.create({
     ...form.value,
-    warningLevel: resolveWarningLevel(form.value.soh),
+    detectTime: form.value.detectTime,
+    warningLevel: resolveWarningLevel(form.value.soh, form.value.maxTemperature, form.value.voltageDiff),
   })
   dialogVisible.value = false
   ElMessage.success('电池检测记录已保存')
@@ -385,26 +425,34 @@ onMounted(loadData)
               </el-table-column>
               <el-table-column prop="soh" label="SOH" width="72" align="center">
                 <template #default="{ row }">
-                  <span class="soh-val" :class="row.soh < 80 ? 'danger' : row.soh < 90 ? 'warn' : 'ok'">
+                  <span v-if="row.noRecord">-</span>
+                  <span v-else class="soh-val" :class="row.soh < 80 ? 'danger' : row.soh < 90 ? 'warn' : 'ok'">
                     {{ row.soh }}%
                   </span>
                 </template>
               </el-table-column>
-              <el-table-column prop="chargeCycles" label="充电次数" width="88" align="center" />
-              <el-table-column prop="maxTemperature" label="最高温" width="76" align="center">
-                <template #default="{ row }">{{ row.maxTemperature }}°</template>
+              <el-table-column label="充电次数" width="88" align="center">
+                <template #default="{ row }">{{ row.noRecord ? '-' : row.chargeCycles }}</template>
               </el-table-column>
-              <el-table-column prop="voltageDiff" label="压差" width="72" align="center" />
+              <el-table-column label="最高温" width="76" align="center">
+                <template #default="{ row }">{{ row.noRecord ? '-' : `${row.maxTemperature}°` }}</template>
+              </el-table-column>
+              <el-table-column label="压差" width="72" align="center">
+                <template #default="{ row }">{{ row.noRecord ? '-' : row.voltageDiff }}</template>
+              </el-table-column>
               <el-table-column label="等级" width="76" align="center">
                 <template #default="{ row }">
-                  <StatusTag :status="row.warningLevel" />
+                  <span v-if="row.noRecord" class="no-record-tag">暂无</span>
+                  <StatusTag v-else :status="row.warningLevel" />
                 </template>
               </el-table-column>
-              <el-table-column prop="detectTime" label="检测时间" min-width="150" />
+              <el-table-column label="检测时间" min-width="150">
+                <template #default="{ row }">{{ row.noRecord ? '暂无检测' : formatDateTime(row.detectTime) }}</template>
+              </el-table-column>
               <el-table-column v-if="can('battery', 'remindOwner')" label="操作" width="88" fixed="right" align="center">
                 <template #default="{ row }">
                   <el-button
-                    v-if="row.warningLevel !== 'NORMAL'"
+                    v-if="!row.noRecord && row.warningLevel !== 'NORMAL'"
                     link
                     type="warning"
                     size="small"
@@ -522,11 +570,23 @@ onMounted(loadData)
               </el-collapse-item>
             </el-collapse>
 
-            <div class="sd-actions" v-if="can('battery', 'remindOwner') && selectedBatteryRecord?.warningLevel !== 'NORMAL'">
+            <div class="sd-actions" v-if="can('battery', 'remindOwner') && selectedBatteryRecord && selectedBatteryRecord.warningLevel !== 'NORMAL'">
               <el-button type="warning" round @click="remindOwner(selectedBatteryRecord!)">
                 提醒车主
               </el-button>
             </div>
+          </div>
+
+          <div class="staff-detail-panel staff-empty" v-else-if="selectedVehicleWithoutRecord">
+            <el-empty :image-size="80">
+              <template #description>
+                <p>
+                  {{ selectedVehicleWithoutRecord.licensePlate || selectedVehicleWithoutRecord.vin }}
+                  暂无健康检测记录
+                </p>
+                <p class="staff-empty-hint">该车辆还未做过电池检测，点击右上角"新增检测记录"添加</p>
+              </template>
+            </el-empty>
           </div>
 
           <div class="staff-detail-panel staff-empty" v-else>
@@ -537,6 +597,11 @@ onMounted(loadData)
     </template>
 
     <el-dialog v-model="dialogVisible" title="新增电池检测记录" width="520px">
+      <el-alert type="info" :closable="false" show-icon style="margin-bottom: 16px">
+        <p>预警/异常判定标准（满足任一即触发）：</p>
+        <p>· <strong>预警</strong>：SOH &lt; 80% 或 最高温 &gt; 50℃ 或 压差 &gt; 0.1V</p>
+        <p>· <strong>异常</strong>：SOH &lt; 70% 或 最高温 &gt; 60℃ 或 压差 &gt; 0.2V</p>
+      </el-alert>
       <el-form :model="form" label-width="110px">
         <el-form-item label="车辆 VIN" required>
           <el-select v-model="form.vin" placeholder="选择车辆" style="width: 100%">
@@ -894,6 +959,17 @@ h3 {
 .soh-val.ok { color: #52c41a; }
 .soh-val.warn { color: #faad14; }
 .soh-val.danger { color: #e60012; }
+
+.no-record-tag {
+  color: #bfbfbf;
+  font-size: 12px;
+}
+
+.staff-empty-hint {
+  color: #8c8c8c;
+  font-size: 12px;
+  margin-top: 4px;
+}
 
 :deep(.selected-health-row td) {
   background: #fff7f6 !important;

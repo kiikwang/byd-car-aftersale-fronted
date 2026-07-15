@@ -18,6 +18,8 @@ const route = useRoute()
 const router = useRouter()
 
 const activeTab = ref(isPartAdmin.value ? 'requests' : 'inventory')
+const requestStatusFilter = ref<'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED'>('ALL')
+const todayApplicationCount = ref(0)
 type PartRequest = {
   usageId: number
   workOrderId: number
@@ -42,6 +44,13 @@ const inventoryData = computed(() => {
 
 const requestsData = computed(() => {
   let list = scopedRequests.value
+  if (requestStatusFilter.value === 'PENDING') {
+    list = list.filter((r) => r.status === 'APPLIED' || r.status === 'PROPOSED')
+  } else if (requestStatusFilter.value === 'APPROVED') {
+    list = list.filter((r) => r.status === 'APPROVED' || r.status === 'USED')
+  } else if (requestStatusFilter.value === 'REJECTED') {
+    list = list.filter((r) => r.status === 'REJECTED')
+  }
   if (filterToday.value) list = list.filter((r) => isToday(r.createdAt))
   return list
 })
@@ -89,7 +98,7 @@ function partRowClassName({ row }: { row: Part }) {
   return isLowStock(row) ? 'low-stock' : ''
 }
 
-const pendingCount = computed(() => requests.value.filter((r) => r.status === 'APPLIED' || r.status === 'PROPOSED').length)
+const pendingCount = computed(() => scopedRequests.value.filter((r) => r.status === 'APPLIED' || r.status === 'PROPOSED').length)
 const partMap = computed(() =>
   Object.fromEntries(tableData.value.filter((p) => p.partId).map((p) => [p.partId as number, p])),
 )
@@ -247,7 +256,12 @@ onMounted(async () => {
 })
 
 async function loadRequests() {
-  requests.value = (await partUsageApi.listPending()) as any
+  const [all, stats] = await Promise.all([
+    partUsageApi.listAll(),
+    partUsageApi.countToday().catch(() => ({ todayApplications: 0 })),
+  ])
+  requests.value = (all || []) as any
+  todayApplicationCount.value = stats?.todayApplications ?? requests.value.filter((r) => isToday(r.createdAt)).length
 }
 </script>
 
@@ -274,9 +288,18 @@ async function loadRequests() {
             :closable="false"
             style="margin-bottom: 12px"
           />
+          <div v-if="isPartAdmin" style="margin-bottom: 12px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap">
+            <el-radio-group v-model="requestStatusFilter" size="small">
+              <el-radio-button value="ALL">全部</el-radio-button>
+              <el-radio-button value="PENDING">待审批</el-radio-button>
+              <el-radio-button value="APPROVED">已审批</el-radio-button>
+              <el-radio-button value="REJECTED">已驳回</el-radio-button>
+            </el-radio-group>
+            <el-tag type="info">今日新申请 {{ todayApplicationCount }} 条</el-tag>
+          </div>
           <el-alert
             v-if="filterToday"
-            :title="`看板筛选：今日新申请（共 ${requestsData.length} 条）`"
+            :title="`看板筛选：今日新申请（共 ${todayApplicationCount} 条）`"
             type="info"
             show-icon
             closable
@@ -322,7 +345,7 @@ async function loadRequests() {
               </template>
             </el-table-column>
           </el-table>
-          <el-empty v-if="isPartAdmin && !requestsData.length" description="暂无待审批领用申请" />
+          <el-empty v-if="!requestsData.length" :description="isPartAdmin ? '暂无领用申请记录' : '暂无申请记录'" />
         </div>
       </el-tab-pane>
 

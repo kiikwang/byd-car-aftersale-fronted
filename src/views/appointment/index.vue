@@ -98,6 +98,15 @@ function openFaultRegister(row: Appointment) {
   faultDialogVisible.value = true
 }
 
+function goToFault(row: Appointment) {
+  const fault = row.appointmentId ? faultByAppointmentId.value[row.appointmentId] : undefined
+  if (fault?.faultNo) {
+    router.push({ path: '/fault', query: { faultNo: fault.faultNo } })
+  } else {
+    router.push('/fault')
+  }
+}
+
 function serviceTypeConfig(serviceType?: Appointment['serviceType']) {
   return getServiceTypeConfig(serviceType)
 }
@@ -355,7 +364,7 @@ onMounted(loadData)
               v-if="can('fault', 'view') && hasFaultForAppointment(row)"
               link
               type="primary"
-              @click="router.push('/fault?status=REGISTERED')"
+              @click="goToFault(row)"
             >
               查看故障
             </el-button>

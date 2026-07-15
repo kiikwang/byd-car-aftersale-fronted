@@ -157,10 +157,6 @@ function goWorkOrders() {
   router.push('/work-order')
 }
 
-function goFaults() {
-  router.push('/fault')
-}
-
 onMounted(async () => {
   const [vs, bs, fs, mine, all] = await Promise.all([
     vehicleApi.list(buildVehicleListParams(userStore.role, userStore.userId)),
@@ -189,7 +185,6 @@ onMounted(async () => {
     <PageHeader title="智能诊断" subtitle="结合车主描述与顾问判断，辅助技师排查故障">
       <template #actions>
         <el-button @click="goWorkOrders">去工单列表</el-button>
-        <el-button @click="goFaults">去故障登记</el-button>
       </template>
     </PageHeader>
 

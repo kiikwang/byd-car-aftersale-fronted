@@ -5,7 +5,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
 import StatusTag from '@/components/StatusTag.vue'
 import { useUserStore } from '@/stores/user'
-import { useOwnerVins, buildVehicleListParams } from '@/composables/useScopedVehicles'
+import { useOwnerVins } from '@/composables/useScopedVehicles'
 import { usePermissions } from '@/composables/usePermissions'
 import { faultApi, settlementApi, vehicleApi, workOrderApi } from '@/api'
 import { queryString } from '@/utils/route-filter'
@@ -102,27 +102,38 @@ async function rejectSettlement(row: Settlement) {
 }
 
 async function loadData() {
+  // 结算单可能涉及不同顾问名下的客户车辆，这里拉取全量车辆用于展示车主/车牌/手机号，
+  // 不按顾问范围过滤，避免看到"车主姓名有、手机号却是空"的情况。
   const [settlements, workOrders, faults, vehicles] = await Promise.all([
     settlementApi.list(),
     workOrderApi.list(),
     faultApi.list(),
-    vehicleApi.list(buildVehicleListParams(userStore.role, userStore.userId)),
+    vehicleApi.list(),
   ])
   vehicleMap.value = Object.fromEntries((vehicles || []).map((v) => [v.vin, v]))
-  const faultVin = Object.fromEntries((faults || []).filter((f: any) => f.faultId).map((f: any) => [f.faultId as number, f.vin]))
-  orderVinMap.value = Object.fromEntries((workOrders || []).filter((w: any) => w.workOrderId).map((w: any) => [w.workOrderId as number, faultVin[w.faultId || 0] || w.vin || '']))
-  tableData.value = (settlements || []).map((s: any) => {
-    const vin = orderVinMap.value[s.workOrderId] || '-'
-    const vehicle = vehicleMap.value[vin]
-    return {
-      ...s,
-      vin,
-      ownerName: vehicle?.ownerName || s.ownerName || '-',
-      ownerPhone: vehicle?.ownerPhone || '',
-      licensePlate: vehicle?.licensePlate || '-',
-      model: vehicle?.model || '-',
-    }
-  })
+  const faultMap = Object.fromEntries((faults || []).filter((f: any) => f.faultId).map((f: any) => [f.faultId as number, f]))
+  const workOrderMap = Object.fromEntries((workOrders || []).filter((w: any) => w.workOrderId).map((w: any) => [w.workOrderId as number, w]))
+  orderVinMap.value = Object.fromEntries((workOrders || []).filter((w: any) => w.workOrderId).map((w: any) => {
+    const fault = faultMap[w.faultId || 0]
+    return [w.workOrderId as number, fault?.vin || w.vin || '']
+  }))
+  tableData.value = (settlements || [])
+    .map((s: any) => {
+      const workOrder = workOrderMap[s.workOrderId]
+      const fault = workOrder?.faultId ? faultMap[workOrder.faultId] : undefined
+      const vin = orderVinMap.value[s.workOrderId] || fault?.vin || '-'
+      const vehicle = vehicleMap.value[vin]
+      return {
+        ...s,
+        vin,
+        workOrderNo: workOrder?.workOrderNo || '',
+        ownerName: vehicle?.ownerName || fault?.ownerName || '-',
+        ownerPhone: vehicle?.ownerPhone || '',
+        licensePlate: vehicle?.licensePlate || fault?.licensePlate || '-',
+        model: vehicle?.model || fault?.model || '-',
+      }
+    })
+    .filter((s) => s.vin && s.vin !== '-')
 }
 
 onMounted(loadData)
@@ -161,7 +172,11 @@ onMounted(loadData)
             <div class="sub-text">{{ row.model }}</div>
           </template>
         </el-table-column>
-        <el-table-column prop="workOrderId" label="关联工单" width="100" />
+        <el-table-column label="关联工单" width="200" show-overflow-tooltip>
+          <template #default="{ row }">
+            {{ row.workOrderNo || row.workOrderId }}
+          </template>
+        </el-table-column>
         <el-table-column prop="vin" label="VIN" width="180" show-overflow-tooltip />
         <el-table-column prop="totalAmount" label="合计(元)" width="100">
           <template #default="{ row }">

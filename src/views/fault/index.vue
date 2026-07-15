@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
@@ -7,10 +7,10 @@ import StatusTag from '@/components/StatusTag.vue'
 import { usePermissions } from '@/composables/usePermissions'
 import { useUserStore } from '@/stores/user'
 import { buildVehicleListParams } from '@/composables/useScopedVehicles'
-import { faultApi, vehicleApi, workOrderApi, userApi } from '@/api'
+import { appointmentApi, faultApi, vehicleApi, workOrderApi, userApi } from '@/api'
 import { faultFilterLabel, parseStatusList, queryString } from '@/utils/route-filter'
-import { parseFaultDescription, buildFaultDescription, FAULT_TYPE_OPTIONS, FAULT_QUICK_TAGS } from '@/utils/fault-form'
-import type { FaultRecord, SysUser, Vehicle, WorkOrder } from '@/types'
+import { parseFaultDescription, buildFaultDescription, inferFaultType, FAULT_TYPE_OPTIONS, FAULT_QUICK_TAGS } from '@/utils/fault-form'
+import type { Appointment, FaultRecord, SysUser, Vehicle, WorkOrder } from '@/types'
 
 const router = useRouter()
 const route = useRoute()
@@ -20,9 +20,11 @@ const tableData = ref<FaultRecord[]>([])
 const workOrders = ref<WorkOrder[]>([])
 const vehicles = ref<Vehicle[]>([])
 const advisors = ref<SysUser[]>([])
+const appointments = ref<Appointment[]>([])
 const dialogVisible = ref(false)
 const editMode = ref(false)
 const editingFaultNo = ref('')
+const selectedAppointmentId = ref<number | null>(null)
 const form = ref({
   vin: '',
   faultType: '',
@@ -33,9 +35,38 @@ const form = ref({
 const faultTypeOptions = [...FAULT_TYPE_OPTIONS]
 const quickTags = [...FAULT_QUICK_TAGS]
 
+const targetFaultNo = computed(() => queryString(route.query.faultNo))
 const filterStatuses = computed(() => parseStatusList(queryString(route.query.status)))
-const hasRouteFilter = computed(() => filterStatuses.value.length > 0)
+const hasRouteFilter = computed(() => filterStatuses.value.length > 0 || Boolean(targetFaultNo.value))
 const routeFilterLabel = computed(() => faultFilterLabel(filterStatuses.value))
+
+/** 已到店但尚未登记故障的预约，供"登记故障"弹窗直接关联车主描述 */
+const registeredAppointmentIds = computed(() =>
+  new Set(tableData.value.filter((f) => f.appointmentId).map((f) => f.appointmentId as number)),
+)
+const pendingArrivedAppointments = computed(() =>
+  appointments.value.filter(
+    (a) => a.status === 'ARRIVED' && !registeredAppointmentIds.value.has(a.appointmentId as number),
+  ),
+)
+
+function applyAppointmentToForm(id: number | null) {
+  const appt = appointments.value.find((a) => a.appointmentId === id)
+  if (appt) {
+    form.value.vin = appt.vin
+    form.value.ownerDescription = appt.problemDescription || ''
+    form.value.faultType = inferFaultType(appt.problemDescription || '') || form.value.faultType
+    if (appt.serviceType === 'EMERGENCY_RESCUE') form.value.faultLevel = 'CRITICAL'
+  } else {
+    form.value.vin = ''
+    form.value.ownerDescription = ''
+  }
+}
+
+watch(selectedAppointmentId, (id) => {
+  if (editMode.value) return
+  applyAppointmentToForm(id)
+})
 const vehicleMap = computed(() =>
   Object.fromEntries(vehicles.value.map((v) => [v.vin, v])),
 )
@@ -62,6 +93,7 @@ const displayRows = computed(() =>
   }),
 )
 const filteredData = computed(() => {
+  if (targetFaultNo.value) return displayRows.value.filter((f) => f.faultNo === targetFaultNo.value)
   if (!filterStatuses.value.length) return displayRows.value
   return displayRows.value.filter((f) => filterStatuses.value.includes(f.status))
 })
@@ -80,6 +112,9 @@ function openCreate() {
     advisorJudgment: '',
     faultLevel: 'MEDIUM',
   }
+  const defaultAppointmentId = pendingArrivedAppointments.value[0]?.appointmentId ?? null
+  selectedAppointmentId.value = defaultAppointmentId
+  applyAppointmentToForm(defaultAppointmentId)
   dialogVisible.value = true
 }
 
@@ -87,6 +122,7 @@ function openEdit(row: FaultRecord) {
   const parsed = parseFaultDescription(row.faultDescription)
   editMode.value = true
   editingFaultNo.value = row.faultNo
+  selectedAppointmentId.value = null
   form.value = {
     vin: row.vin,
     faultType: parsed.faultType || row.faultType || '其他',
@@ -124,6 +160,7 @@ function submitForm() {
     vin: form.value.vin,
     ownerId: selectedVehicle.ownerId,
     advisorId: userStore.userId,
+    appointmentId: !editMode.value && selectedAppointmentId.value ? selectedAppointmentId.value : undefined,
     faultDescription: buildFaultDescription({
       faultType: form.value.faultType,
       ownerDescription: form.value.ownerDescription,
@@ -210,13 +247,15 @@ async function removeFault(row: FaultRecord) {
 }
 
 onMounted(async () => {
-  const [vs, users] = await Promise.all([
+  const [vs, users, aps] = await Promise.all([
     vehicleApi.list(buildVehicleListParams(userStore.role, userStore.userId)),
     userApi.list(),
+    appointmentApi.list(),
   ])
   await reloadFaults()
   vehicles.value = vs
   advisors.value = (users || []).filter((u) => u.role === 'ADVISOR' && u.status === 'ENABLED')
+  appointments.value = aps || []
 })
 </script>
 
@@ -230,7 +269,16 @@ onMounted(async () => {
 
     <div class="page-card">
       <el-alert
-        v-if="hasRouteFilter"
+        v-if="targetFaultNo"
+        :title="`已定位故障单：${targetFaultNo}`"
+        type="warning"
+        show-icon
+        closable
+        style="margin-bottom: 12px"
+        @close="clearRouteFilters"
+      />
+      <el-alert
+        v-else-if="hasRouteFilter"
         :title="`看板筛选：${routeFilterLabel}（共 ${filteredData.length} 条）`"
         type="info"
         show-icon
@@ -312,8 +360,29 @@ onMounted(async () => {
 
     <el-dialog v-model="dialogVisible" :title="editMode ? '编辑故障' : '故障登记'" width="600px">
       <el-form :model="form" label-width="100px">
+        <el-form-item v-if="!editMode" label="关联预约">
+          <el-select
+            v-model="selectedAppointmentId"
+            placeholder="选择已到店预约，自动带出车辆与车主描述"
+            style="width: 100%"
+            clearable
+          >
+            <el-option
+              v-for="a in pendingArrivedAppointments"
+              :key="a.appointmentId"
+              :label="`${a.appointmentNo} · ${a.vin}${a.ownerName ? ' · ' + a.ownerName : ''}`"
+              :value="a.appointmentId"
+            />
+          </el-select>
+          <p v-if="!pendingArrivedAppointments.length" class="field-hint">暂无待登记故障的到店预约，可手动选择车辆登记</p>
+        </el-form-item>
         <el-form-item label="车辆 VIN" required>
-          <el-select v-model="form.vin" placeholder="选择车辆" style="width: 100%" :disabled="editMode">
+          <el-select
+            v-model="form.vin"
+            placeholder="选择车辆"
+            style="width: 100%"
+            :disabled="editMode || Boolean(selectedAppointmentId)"
+          >
             <el-option v-for="v in vehicles" :key="v.vin" :label="`${v.vin} (${v.model})`" :value="v.vin" />
           </el-select>
         </el-form-item>
@@ -364,5 +433,11 @@ onMounted(async () => {
 .text-muted {
   color: #8c8c8c;
   font-size: 12px;
+}
+
+.field-hint {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: #8c8c8c;
 }
 </style>

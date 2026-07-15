@@ -11,6 +11,7 @@ import { agentApi, faultApi, partUsageApi, partsApi, settlementApi, userApi, wor
 import type { WarrantyEstimate } from '@/api'
 import { getWorkOrderProgress } from '@/utils/work-order-progress'
 import { parseFaultDescription } from '@/utils/fault-form'
+import { formatDateTime } from '@/utils/format-datetime'
 import type { FaultRecord, Part, PartUsageRecord, Settlement, SysUser, WorkOrder } from '@/types'
 
 
@@ -38,6 +39,8 @@ const linkedFault = ref<FaultRecord | null>(null)
 const partUsages = ref<PartUsageRecord[]>([])
 const parts = ref<Part[]>([])
 const settlement = ref<Settlement>()
+const laborCostEditing = ref(false)
+const laborCostInput = ref(0)
 
 const partMap = computed(() =>
   Object.fromEntries(parts.value.filter((p) => p.partId).map((p) => [p.partId as number, p])),
@@ -50,29 +53,48 @@ const progress = computed(() => {
   return getWorkOrderProgress(order.value.status)
 })
 const timeline = computed(() => {
-  const t: Array<{ time: string; content: string; type: 'primary' | 'success' | 'warning'; sortKey: number }> = []
-  if (!order.value) return t
-  const push = (time: string | undefined, content: string, type: 'primary' | 'success' | 'warning') => {
-    const value = time || '-'
-    t.push({ time: value, content, type, sortKey: value === '-' ? 0 : Date.parse(value.replace(' ', 'T')) || 0 })
+  if (!order.value) return []
+  const o = order.value
+  const nodes: Array<{ time: string; content: string; type: 'primary' | 'success' | 'warning'; order: number }> = []
+  const push = (time: string | undefined, content: string, type: 'primary' | 'success' | 'warning', orderIndex: number) => {
+    nodes.push({ time: formatDateTime(time), content, type, order: orderIndex })
   }
-  push(order.value.createdAt, '工单创建', 'primary')
-  if (['ASSIGNED', 'IN_PROGRESS', 'PART_WAITING', 'COMPLETED'].includes(order.value.status)) {
-    push(order.value.updatedAt || order.value.createdAt, '已派工', 'success')
+  push(o.createdAt, '工单创建', 'primary', 1)
+  if (o.assignedAt || (o.technicianId && ['ASSIGNED', 'IN_PROGRESS', 'PART_WAITING', 'COMPLETED'].includes(o.status))) {
+    push(o.assignedAt || o.createdAt, '已派工', 'success', 2)
   }
-  if (['IN_PROGRESS', 'PART_WAITING', 'COMPLETED'].includes(order.value.status) && order.value.startedAt) {
-    push(order.value.startedAt, '开始维修', 'warning')
+  if (o.startedAt) {
+    push(o.startedAt, '开始维修', 'warning', 3)
   }
-  if (order.value.status === 'PART_WAITING') {
-    push(order.value.updatedAt, '等待备件', 'warning')
+  if (o.partWaitingAt) {
+    push(o.partWaitingAt, '等待备件', 'warning', 4)
   }
-  if (order.value.status === 'COMPLETED') {
-    push(order.value.finishedAt || order.value.updatedAt, '维修完成', 'success')
+  const usageStatusText: Record<string, string> = {
+    PROPOSED: '待审批',
+    APPLIED: '待审批',
+    APPROVED: '已审批',
+    USED: '已审批',
+    REJECTED: '已驳回',
+    RETURNED: '已退回',
   }
-  return t
-    .filter((item, index, arr) => arr.findIndex((x) => x.content === item.content) === index)
-    .sort((a, b) => a.sortKey - b.sortKey)
-    .map(({ time, content, type }) => ({ time, content, type }))
+  ;[...partUsages.value]
+    .sort((a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || '')))
+    .forEach((u) => {
+      const part = partMap.value[u.partId]
+      push(
+        u.createdAt,
+        `申请备件：${part?.partName || '备件'} x${u.quantity}（${usageStatusText[u.status] || u.status}）`,
+        u.status === 'REJECTED' ? 'warning' : 'primary',
+        3.5,
+      )
+    })
+  if (o.partsArrivedAt) {
+    push(o.partsArrivedAt, '备件已到', 'success', 5)
+  }
+  if (o.status === 'COMPLETED') {
+    push(o.finishedAt || o.updatedAt, '维修完成', 'success', 6)
+  }
+  return nodes.sort((a, b) => a.order - b.order).map(({ time, content, type }) => ({ time, content, type }))
 })
 
 
@@ -92,7 +114,9 @@ async function loadDetail() {
   }
   const [fs, users] = await Promise.all([faultApi.list(), userApi.list()])
   faults.value = fs || []
-  technicians.value = (users || []).filter((u) => u.role === 'TECHNICIAN' && u.status === 'ENABLED')
+  technicians.value = (users || [])
+    .filter((u) => u.role === 'TECHNICIAN' && u.status === 'ENABLED')
+    .sort((a, b) => String(a.username || '').localeCompare(String(b.username || '')))
   if (!found) {
     ElMessage.warning('工单不存在')
     router.replace('/work-order')
@@ -168,8 +192,22 @@ function needParts() {
 
 function resumeRepair() {
   if (!order.value?.workOrderId) return
-  workOrderApi.start(order.value.workOrderId).then(() => {
-    ElMessage.success('继续维修')
+  workOrderApi.partsArrived(order.value.workOrderId).then(() => {
+    ElMessage.success('备件已到位，继续维修')
+    loadDetail()
+  })
+}
+
+function openLaborCostEdit() {
+  laborCostInput.value = Number(order.value?.laborCost || 0)
+  laborCostEditing.value = true
+}
+
+function saveLaborCost() {
+  if (!order.value?.workOrderId) return
+  workOrderApi.updateLaborCost(order.value.workOrderId, laborCostInput.value).then(() => {
+    laborCostEditing.value = false
+    ElMessage.success('人工费已更新')
     loadDetail()
   })
 }
@@ -298,7 +336,7 @@ function managerSupervise() {
 
         <el-button v-if="isTechnician && ['IN_PROGRESS', 'PART_WAITING'].includes(order?.status || '')" @click="openProposeDialog">申请备件</el-button>
 
-        <el-button v-if="isTechnician && order?.status === 'PART_WAITING'" type="warning" @click="resumeRepair">备件到位继续</el-button>
+        <el-button v-if="isTechnician && order?.status === 'PART_WAITING'" type="warning" @click="resumeRepair">备件到位</el-button>
 
         <el-button v-if="isTechnician && ['IN_PROGRESS', 'PART_WAITING'].includes(order?.status || '')" type="success" @click="openCompleteDialog">
 
@@ -326,7 +364,24 @@ function managerSupervise() {
 
         <el-descriptions-item label="状态"><StatusTag :status="order.status" /></el-descriptions-item>
 
-        <el-descriptions-item v-if="!userStore.isOwner" label="人工费">¥{{ order.laborCost || 0 }}</el-descriptions-item>
+        <el-descriptions-item v-if="!userStore.isOwner" label="人工费">
+          <template v-if="laborCostEditing && (isAdvisor || isServiceManager)">
+            <el-input-number v-model="laborCostInput" :min="0" :step="50" size="small" />
+            <el-button link type="primary" @click="saveLaborCost">保存</el-button>
+            <el-button link @click="laborCostEditing = false">取消</el-button>
+          </template>
+          <template v-else>
+            ¥{{ order.laborCost || 0 }}
+            <el-button
+              v-if="(isAdvisor || isServiceManager) && order.status !== 'COMPLETED'"
+              link
+              type="primary"
+              @click="openLaborCostEdit"
+            >
+              修改
+            </el-button>
+          </template>
+        </el-descriptions-item>
 
         <el-descriptions-item label="进度" :span="3">
 
@@ -481,8 +536,14 @@ function managerSupervise() {
           <p v-for="(note, i) in warrantyEstimate.notes || []" :key="i" class="hint">{{ note }}</p>
         </el-alert>
         <el-form-item label="质保减免">
-          <el-input-number v-model="completeForm.warrantyAmount" :min="0" :max="warrantyEstimate?.grossAmount ?? 999999" :step="100" style="width: 100%" />
-          <p class="hint">质保内费用由厂家承担；超出建议上限将无法提交</p>
+          <el-input-number
+            v-model="completeForm.warrantyAmount"
+            :min="0"
+            :max="warrantyEstimate?.suggestedWarrantyAmount ?? warrantyEstimate?.grossAmount ?? 999999"
+            :step="100"
+            style="width: 100%"
+          />
+          <p class="hint">质保内费用由厂家承担；不可超过系统建议上限</p>
         </el-form-item>
       </el-form>
       <template #footer>

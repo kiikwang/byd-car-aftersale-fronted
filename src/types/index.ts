@@ -28,11 +28,12 @@ export interface ServiceCenter {
 
 export interface Vehicle {
   vin: string
-  ownerId: number
-  advisorId: number
+  /** 新建时可省略，后端按车主姓名+手机号自动创建/关联 */
+  ownerId?: number
+  advisorId?: number
   licensePlate: string
   /** 关联车型目录 catalogId */
-  catalogId: string
+  catalogId?: string
   model: string
   batteryModel: string
   purchaseDate: string
@@ -167,7 +168,10 @@ export interface WorkOrder {
   repairResult?: string
   progress?: number
   createdAt?: string
+  assignedAt?: string
   startedAt?: string
+  partWaitingAt?: string
+  partsArrivedAt?: string
   finishedAt?: string
   updatedAt?: string
 }
