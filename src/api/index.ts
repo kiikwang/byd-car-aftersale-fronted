@@ -196,7 +196,11 @@ export const authApi = {
     licensePlate: string
     model: string
     batteryModel?: string
+    purchaseDate?: string
+    currentMileage?: number
+    advisorId?: number
   }) => unwrap<LoginResponsePayload>(request.post('/auth/register', data)),
+  advisors: () => unwrap<{ advisorId: number; realName: string }[]>(request.get('/auth/advisors')),
   me: () => unwrap<Omit<LoginResponsePayload, 'token'>>(request.get('/auth/me')),
   logout: () => unwrap<void>(request.post('/auth/logout')),
 }

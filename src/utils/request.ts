@@ -32,7 +32,9 @@ request.interceptors.request.use((config: InternalAxiosRequestConfig) => {
 ;(request.interceptors.response.use as any)(
   (response: AxiosResponse) => {
     const payload = response.data as BackendResult<unknown> | unknown
-    if (payload && typeof payload === 'object' && 'code' in payload && 'message' in payload && 'data' in payload) {
+    // 后端配置了 default-property-inclusion: non_null，data 为 null 时该字段会被整体从 JSON 中剔除，
+    // 因此这里不能要求 'data' in payload 一定成立，否则失败响应会被误判为原始数据直接返回。
+    if (payload && typeof payload === 'object' && 'code' in payload && 'message' in payload) {
       const wrapped = payload as BackendResult<unknown>
       if (wrapped.code !== 200) {
         ElMessage.error(wrapped.message || '请求失败')

@@ -10,6 +10,8 @@ import { useUserStore } from '@/stores/user'
 
 import { ROLE_LIST, type UserRole } from '@/constants/roles'
 
+import { validateLoginForm } from '@/utils/account-validate'
+
 
 
 const router = useRouter()
@@ -63,6 +65,7 @@ const loginHint = computed(() =>
 )
 
 function changeLoginTab(tab: string | number) {
+  ElMessage.closeAll()
   const nextTab = tab === 'STAFF' ? 'STAFF' : 'OWNER'
   activeLoginTab.value = nextTab
   selectRole(nextTab === 'OWNER' ? 'OWNER' : 'ADVISOR')
@@ -71,6 +74,8 @@ function changeLoginTab(tab: string | number) {
 
 
 function selectRole(role: UserRole) {
+
+  ElMessage.closeAll()
 
   selectedRole.value = role
 
@@ -84,9 +89,14 @@ function selectRole(role: UserRole) {
 
 async function handleLogin() {
 
-  if (!form.value.username || !form.value.password) {
+  // 先清掉上一次登录残留的提示条，避免看到跟本次操作无关的旧提示。
+  ElMessage.closeAll()
 
-    ElMessage.warning('请输入用户名和密码')
+  const formatError = validateLoginForm(form.value.username, form.value.password)
+
+  if (formatError) {
+
+    ElMessage.warning(formatError)
 
     return
 
@@ -235,7 +245,13 @@ function goRegister() {
 
           <el-form-item>
 
-            <el-input v-model="form.username" placeholder="用户名" size="large" prefix-icon="User" />
+            <el-input
+              v-model="form.username"
+              placeholder="用户名"
+              size="large"
+              prefix-icon="User"
+              @focus="ElMessage.closeAll()"
+            />
 
           </el-form-item>
 
@@ -256,6 +272,8 @@ function goRegister() {
               show-password
 
               @keyup.enter="handleLogin"
+
+              @focus="ElMessage.closeAll()"
 
             />
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'
@@ -11,6 +11,7 @@ const router = useRouter()
 const userStore = useUserStore()
 
 const loading = ref(false)
+const advisorOptions = ref<{ advisorId: number; realName: string }[]>([])
 const form = ref({
   username: '',
   password: '',
@@ -21,6 +22,20 @@ const form = ref({
   licensePlate: '',
   catalogId: '',
   batteryModel: '',
+  purchaseDate: '',
+  currentMileage: 0,
+  advisorId: undefined as number | undefined,
+})
+
+onMounted(async () => {
+  try {
+    advisorOptions.value = await authApi.advisors()
+    if (advisorOptions.value.length === 1) {
+      form.value.advisorId = advisorOptions.value[0].advisorId
+    }
+  } catch {
+    // 顾问列表加载失败不影响注册，提交时后端会自动分配
+  }
 })
 
 /** 注册页推荐车型：汉 EV、海豹、宋 PLUS 等 */
@@ -53,17 +68,29 @@ async function handleRegister() {
     ElMessage.warning('请填写完整注册信息（含车辆信息）')
     return
   }
+  if (/\s/.test(username)) {
+    ElMessage.warning('用户名不能包含空格')
+    return
+  }
   const normalizedVin = vin.trim().toUpperCase()
   if (!VIN_PATTERN.test(normalizedVin)) {
     ElMessage.warning('VIN 须为 17 位，且不能包含 I、O、Q')
     return
   }
-  if (password.length < 6) {
-    ElMessage.warning('密码至少 6 位')
+  if (/\s/.test(password)) {
+    ElMessage.warning('密码不能包含空格')
     return
   }
   if (password !== confirmPassword) {
     ElMessage.warning('两次输入的密码不一致')
+    return
+  }
+  if (!form.value.purchaseDate) {
+    ElMessage.warning('请选择购车时间')
+    return
+  }
+  if (!form.value.advisorId) {
+    ElMessage.warning('请选择服务顾问')
     return
   }
 
@@ -78,6 +105,9 @@ async function handleRegister() {
       licensePlate: licensePlate.trim(),
       model: selectedModelName.value,
       batteryModel: form.value.batteryModel || undefined,
+      purchaseDate: form.value.purchaseDate || undefined,
+      currentMileage: form.value.currentMileage ?? 0,
+      advisorId: form.value.advisorId,
     })
     resetVehicleCache()
     userStore.applyProfile(payload)
@@ -101,7 +131,7 @@ async function handleRegister() {
       <el-form :model="form" label-position="top" @submit.prevent="handleRegister">
         <el-divider content-position="left">账号信息</el-divider>
         <el-form-item label="用户名">
-          <el-input v-model="form.username" placeholder="建议使用手机号或拼音账号" />
+          <el-input v-model="form.username" placeholder="请输入用户名" />
         </el-form-item>
         <el-form-item label="真实姓名">
           <el-input v-model="form.realName" placeholder="请输入姓名" />
@@ -110,7 +140,7 @@ async function handleRegister() {
           <el-input v-model="form.phone" placeholder="11 位手机号" maxlength="11" />
         </el-form-item>
         <el-form-item label="密码">
-          <el-input v-model="form.password" type="password" show-password placeholder="至少 6 位" />
+          <el-input v-model="form.password" type="password" show-password placeholder="请输入密码" />
         </el-form-item>
         <el-form-item label="确认密码">
           <el-input v-model="form.confirmPassword" type="password" show-password />
@@ -142,6 +172,29 @@ async function handleRegister() {
               :key="item.catalogId"
               :label="`${item.displayName} · ${item.network}`"
               :value="item.catalogId"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="购车时间" required>
+          <el-date-picker
+            v-model="form.purchaseDate"
+            type="date"
+            placeholder="选择购车日期"
+            style="width: 100%"
+            value-format="YYYY-MM-DD"
+            :disabled-date="(date: Date) => date.getTime() > Date.now()"
+          />
+        </el-form-item>
+        <el-form-item label="当前里程（km）">
+          <el-input-number v-model="form.currentMileage" :min="0" :step="100" style="width: 100%" controls-position="right" />
+        </el-form-item>
+        <el-form-item label="服务顾问" required>
+          <el-select v-model="form.advisorId" placeholder="选择服务顾问" style="width: 100%" filterable>
+            <el-option
+              v-for="item in advisorOptions"
+              :key="item.advisorId"
+              :label="item.realName"
+              :value="item.advisorId"
             />
           </el-select>
         </el-form-item>
