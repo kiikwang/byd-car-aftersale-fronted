@@ -167,6 +167,16 @@ export const agentApi = {
   diagnose: (data: { vin?: string; faultDesc: string; faultId?: number }) =>
     unwrap<any>(request.post('/agent/diagnose', data)),
   listByFault: (faultId: number) => unwrap<any[]>(request.get(`/agent/fault/${faultId}`)),
+  chat: (data: { conversationId?: number; faultId?: number; message: string }) =>
+    unwrap<any>(request.post('/agent/chat', data)),
+  listConversations: (faultId: number) => unwrap<any[]>(request.get(`/agent/chat/conversations/${faultId}`)),
+  getChatHistory: (conversationId: number) => unwrap<any[]>(request.get(`/agent/chat/history/${conversationId}`)),
+  generateScript: (data: { diagnosisId: number }) =>
+    unwrap<string>(request.post('/agent/assistant/script', data)),
+  generateQuote: (data: { diagnosisId: number }) =>
+    unwrap<string>(request.post('/agent/assistant/quote', data)),
+  generateMaintenance: (data: { vin: string }) =>
+    unwrap<string>(request.post('/agent/assistant/maintenance', data)),
 }
 
 export const dashboardApi = {
