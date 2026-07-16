@@ -242,10 +242,24 @@ async function openMaintenanceDialog(vin: string) {
   try {
     const raw = await agentApi.generateMaintenance({ vin })
     try {
-      const parsed = JSON.parse(raw)
+      let jsonStr = raw.trim()
+      // 去除 ```json ... ``` 包裹
+      if (jsonStr.startsWith('```')) {
+        jsonStr = jsonStr.replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, '')
+      }
+      const parsed = JSON.parse(jsonStr)
+      // 兼容英文和中文两种字段名
+      const recs = parsed.recommendations || parsed['保养建议'] || []
+      const summary = parsed.summary || parsed['总结'] || ''
+      // 统一字段名为中文
       maintenanceResult.value = {
-        recommendations: parsed.recommendations || [],
-        summary: parsed.summary || ''
+        recommendations: recs.map((r: any) => ({
+          item: r.item || r['保养项目'] || '',
+          priority: r.priority || r['紧急程度'] || '',
+          reason: r.reason || r['原因'] || '',
+          suggestedTime: r.suggestedTime || r['建议时间'] || ''
+        })),
+        summary
       }
     } catch {
       maintenanceResult.value = { recommendations: [], summary: raw }

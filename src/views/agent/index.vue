@@ -161,6 +161,14 @@ async function startDiagnosis() {
   }
 }
 
+function extractJsonFromRaw(raw: string): string {
+  let s = raw.trim()
+  if (s.startsWith('```')) {
+    s = s.replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, '')
+  }
+  return s
+}
+
 async function handleGenerateScript() {
   if (!result.value?.diagnosisId) {
     ElMessage.warning('请先完成诊断')
@@ -170,13 +178,13 @@ async function handleGenerateScript() {
   customerScript.value = null
   try {
     const script = await agentApi.generateScript({ diagnosisId: result.value.diagnosisId })
-    // 解析JSON并提取中文内容
     try {
-      const parsed = JSON.parse(script)
+      const jsonStr = extractJsonFromRaw(script)
+      const parsed = JSON.parse(jsonStr)
       customerScript.value = {
-        explanation: parsed.explanation || '',
-        suggestion: parsed.suggestion || '',
-        notes: parsed.notes || ''
+        explanation: parsed['故障解释'] || parsed.explanation || '',
+        suggestion: parsed['维修建议'] || parsed.suggestion || '',
+        notes: parsed['注意事项'] || parsed.notes || ''
       }
     } catch {
       customerScript.value = { explanation: script, suggestion: '', notes: '' }
@@ -198,15 +206,20 @@ async function handleGenerateQuote() {
   repairQuote.value = null
   try {
     const quote = await agentApi.generateQuote({ diagnosisId: result.value.diagnosisId })
-    // 解析JSON并提取中文内容
     try {
-      const parsed = JSON.parse(quote)
+      const jsonStr = extractJsonFromRaw(quote)
+      const parsed = JSON.parse(jsonStr)
+      const items = parsed['费用明细'] || parsed.items || []
       repairQuote.value = {
-        items: parsed.items || [],
-        laborEstimate: parsed.laborEstimate || 0,
-        totalMin: parsed.totalMin || 0,
-        totalMax: parsed.totalMax || 0,
-        notes: parsed.notes || ''
+        items: items.map((item: any) => ({
+          name: item['项目名称'] || item.name || '',
+          type: item['类型'] || item.type || '',
+          estimatedPrice: item['预估价格'] ?? item.estimatedPrice ?? 0
+        })),
+        laborEstimate: parsed['工时费估算'] ?? parsed.laborEstimate ?? 0,
+        totalMin: parsed['最低总价'] ?? parsed.totalMin ?? 0,
+        totalMax: parsed['最高总价'] ?? parsed.totalMax ?? 0,
+        notes: parsed['报价说明'] || parsed.notes || ''
       }
     } catch {
       repairQuote.value = { items: [], laborEstimate: 0, totalMin: 0, totalMax: 0, notes: quote }
