@@ -9,7 +9,7 @@ import StatusTag from '@/components/StatusTag.vue'
 import { useUserStore } from '@/stores/user'
 import { useOwnerVins, buildVehicleListParams } from '@/composables/useScopedVehicles'
 import { usePermissions } from '@/composables/usePermissions'
-import { batteryApi, vehicleApi, vehicleHealthApi } from '@/api'
+import { agentApi, batteryApi, vehicleApi, vehicleHealthApi } from '@/api'
 import { formatDateTime, formatLicensePlate } from '@/utils/format-datetime'
 import type { BatteryHealthRecord, Vehicle, VehicleHealthItem, VehicleHealthSnapshot } from '@/types'
 
@@ -24,6 +24,9 @@ const vehicles = ref<Vehicle[]>([])
 const healthSnapshots = ref<VehicleHealthSnapshot[]>([])
 const selectedVin = ref('')
 const dialogVisible = ref(false)
+const maintenanceDialogVisible = ref(false)
+const maintenanceLoading = ref(false)
+const maintenanceResult = ref<any>(null)
 const form = ref({
   vin: '',
   soh: 100,
@@ -232,6 +235,28 @@ function goAppointment() {
   router.push('/appointment')
 }
 
+async function openMaintenanceDialog(vin: string) {
+  maintenanceResult.value = null
+  maintenanceLoading.value = true
+  maintenanceDialogVisible.value = true
+  try {
+    const raw = await agentApi.generateMaintenance({ vin })
+    try {
+      const parsed = JSON.parse(raw)
+      maintenanceResult.value = {
+        recommendations: parsed.recommendations || [],
+        summary: parsed.summary || ''
+      }
+    } catch {
+      maintenanceResult.value = { recommendations: [], summary: raw }
+    }
+  } catch (e: any) {
+    ElMessage.error(e?.message || '保养建议生成失败')
+  } finally {
+    maintenanceLoading.value = false
+  }
+}
+
 function openCreate() {
   form.value = {
     vin: vehicles.value[0]?.vin || '',
@@ -376,13 +401,24 @@ onMounted(loadData)
               </el-descriptions>
             </el-collapse-item>
           </el-collapse>
-          <el-button
-            :type="summary.level === 'NORMAL' ? 'default' : 'primary'"
-            round
-            @click="goAppointment"
-          >
-            预约服务
-          </el-button>
+          <div class="hcard-actions">
+            <el-button
+              :type="summary.level === 'NORMAL' ? 'default' : 'primary'"
+              round
+              @click="goAppointment"
+            >
+              预约服务
+            </el-button>
+            <el-button
+              type="success"
+              plain
+              round
+              @click="openMaintenanceDialog(summary.vehicle.vin)"
+            >
+              <el-icon><Tools /></el-icon>
+              AI 保养建议
+            </el-button>
+          </div>
         </footer>
       </div>
       <el-empty v-if="ownerHealthSummaries.length === 0" description="暂无车辆健康数据，请确认该车主已绑定车辆并执行富数据/健康迁移脚本" />
@@ -575,6 +611,17 @@ onMounted(loadData)
                 提醒车主
               </el-button>
             </div>
+            <div class="sd-actions">
+              <el-button
+                type="success"
+                plain
+                round
+                @click="openMaintenanceDialog(selectedHealthSummary.vehicle.vin)"
+              >
+                <el-icon><Tools /></el-icon>
+                AI 保养建议
+              </el-button>
+            </div>
           </div>
 
           <div class="staff-detail-panel staff-empty" v-else-if="selectedVehicleWithoutRecord">
@@ -635,6 +682,50 @@ onMounted(loadData)
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
         <el-button type="primary" @click="submitCreate">保存</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="maintenanceDialogVisible" title="AI 智能保养建议" width="600px">
+      <div v-if="maintenanceLoading" class="maintenance-loading">
+        <el-skeleton :rows="5" animated />
+        <p class="loading-text">AI 正在分析车辆数据，生成个性化保养建议...</p>
+      </div>
+      <div v-else-if="maintenanceResult" class="maintenance-result">
+        <div v-if="maintenanceResult.summary" class="maintenance-summary">
+          <el-alert type="success" :closable="false" show-icon>
+            <template #title>整体保养建议</template>
+            <p>{{ maintenanceResult.summary }}</p>
+          </el-alert>
+        </div>
+        <div v-if="maintenanceResult.recommendations && maintenanceResult.recommendations.length" class="maintenance-items">
+          <h4 style="margin: 16px 0 12px; font-size: 14px; font-weight: 600;">推荐保养项目</h4>
+          <el-timeline>
+            <el-timeline-item
+              v-for="(item, idx) in maintenanceResult.recommendations"
+              :key="idx"
+              :type="item.priority === '紧急' ? 'danger' : item.priority === '重要' ? 'warning' : 'success'"
+              :timestamp="item.suggestedTime"
+              placement="top"
+            >
+              <div class="maintenance-item-content">
+                <strong>{{ item.item }}</strong>
+                <p style="margin: 6px 0 0; color: #595959; font-size: 13px;">{{ item.reason }}</p>
+                <el-tag
+                  :type="item.priority === '紧急' ? 'danger' : item.priority === '重要' ? 'warning' : 'success'"
+                  size="small"
+                  style="margin-top: 6px;"
+                >
+                  {{ item.priority }}
+                </el-tag>
+              </div>
+            </el-timeline-item>
+          </el-timeline>
+        </div>
+        <el-empty v-if="!maintenanceResult.summary && (!maintenanceResult.recommendations || !maintenanceResult.recommendations.length)" description="暂无保养建议" />
+      </div>
+      <template #footer>
+        <el-button @click="maintenanceDialogVisible = false">关闭</el-button>
+        <el-button type="primary" @click="goAppointment">预约保养</el-button>
       </template>
     </el-dialog>
   </div>
@@ -1284,6 +1375,45 @@ h3 {
   .staff-detail-panel {
     position: static;
     margin-top: 12px;
+  }
+}
+
+/* 车主卡片按钮组 */
+.hcard-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+/* 保养建议弹窗 */
+.maintenance-loading {
+  padding: 20px 0;
+
+  .loading-text {
+    margin-top: 16px;
+    text-align: center;
+    color: #8c93a0;
+    font-size: 14px;
+  }
+}
+
+.maintenance-result {
+  .maintenance-summary {
+    margin-bottom: 16px;
+
+    p {
+      margin: 8px 0 0;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+  }
+
+  .maintenance-item-content {
+    strong {
+      font-size: 14px;
+      color: #1f2329;
+    }
   }
 }
 </style>
