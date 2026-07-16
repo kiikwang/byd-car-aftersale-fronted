@@ -137,10 +137,14 @@ async function loadDetail() {
     technician: technicians.value.find((t) => t.userId === found.technicianId)?.realName || found.technician || '待派工',
   }
   if (found.workOrderId) {
+    // 结算单仅在工单完工后才生成；未完工时不要去查，否则后端会抛业务异常并被全局拦截器弹红条
+    const needSettlement = found.status === 'COMPLETED'
     const [usages, ps, st] = await Promise.all([
       partUsageApi.listByWorkOrder(found.workOrderId),
       partsApi.list(),
-      settlementApi.getByWorkOrder(found.workOrderId).catch(() => undefined),
+      needSettlement
+        ? settlementApi.getByWorkOrder(found.workOrderId).catch(() => undefined)
+        : Promise.resolve(undefined),
     ])
     partUsages.value = usages || []
     parts.value = ps || []
