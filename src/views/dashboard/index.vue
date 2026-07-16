@@ -689,8 +689,8 @@ onMounted(async () => {
       </el-row>
     </template>
 
-    <!-- 经理/管理员：运营统计图表 -->
-    <template v-if="config.showOrderStatusChart || config.showFaultPie || config.showPartsStockBar">
+    <!-- 经理/管理员：运营统计图表（备件员已在上方专属区展示库存排行，此处不再重复） -->
+    <template v-if="config.showOrderStatusChart || config.showFaultPie || (config.showPartsStockBar && userStore.role !== 'PART_ADMIN')">
       <el-row v-if="config.showOrderStatusChart || config.showFaultPie" :gutter="16">
         <el-col v-if="config.showOrderStatusChart" :span="12">
           <div class="page-card chart-card">
@@ -707,7 +707,7 @@ onMounted(async () => {
       </el-row>
 
       <el-row :gutter="16" style="margin-top: 16px">
-        <el-col v-if="config.showPartsStockBar" :span="12">
+        <el-col v-if="config.showPartsStockBar && userStore.role !== 'PART_ADMIN'" :span="12">
           <div class="page-card chart-card">
             <h3>备件库存排行</h3>
             <VChart :option="partsStockOption" style="height: 280px" autoresize />
